@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+
+<html lang="en" ng-app="myApp" id="myApp">
+<head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">    
+
+    <title>AngularJs MultiSelect</title>
+    <link rel="stylesheet" href="css/isteven-multi-select.css">                        
+    <script src="js/libs/angular.min.js"></script>      
+    <script src="js/libs/isteven-multi-select.js"></script>  
+</head>
+
+<body ng-app="myApp">
+<div ng-controller="mainController" >
+   
+    <div     
+    isteven-multi-select
+    input-model="modernBrowsers"
+    output-model="outputBrowsers"
+    button-label="full_name"
+    item-label="full_name maker"
+    max-height = "100px"
+    ajax-options = "ajaxOptions"
+    tick-property="ticked"
+>
+</div>
+</div>
+
+
+<script>
+angular.module("myApp", ["isteven-multi-select"])
+    .controller("mainController", function($scope,$http) {
+       $scope.modernBrowsers = [];
+
+    $scope.indexPage = 0;
+    $scope.ajaxOptions = {};
+    $scope.ajaxOptions.url = "https://api.github.com/search/repositories";
+    $scope.ajaxOptions.method = "GET";
+    $scope.ajaxOptions.loadOnInit = true;
+    $scope.ajaxOptions.headers = {
+        'Content-Type':'application/json'
+    };
+    
+    $scope.ajaxOptions.prepareRequest = function(terms){
+        var _res = {};
+        _res.page = terms.page;
+        // saerch not done yet but local search will work
+        _res.q = "angular";
+        return _res;
+    };
+
+    $scope.ajaxOptions.processResults = function( responce, params ){
+        // console.log("asdasdasd");
+        // $scope.modernBrowsers = $scope.modernBrowsers.concat();
+        // responce must be {results,isMore}
+        var _data = {}
+        _data.results = responce.items;
+        _data.isMore = ( ((params.page)? params.page : 1) * 30) < responce.total_count;
+        return _data;
+    };
+    
+    });
+</script>
+
+
+
+</body>
+
+</html>

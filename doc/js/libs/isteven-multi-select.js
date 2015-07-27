@@ -33,7 +33,7 @@
 
 'use strict'
 
-angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect' , [ '$sce', '$timeout', '$templateCache', function ( $sce, $timeout, $templateCache ) {
+angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect' , [ '$sce', '$timeout', '$http','$q', '$templateCache', function ( $sce, $timeout, $http,$q, $templateCache ) {
     return {
         restrict: 
             'AE',
@@ -44,6 +44,9 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
             inputModel      : '=',
             outputModel     : '=',
 
+            //controllers
+            ajaxOptions     : '=',
+            
             // settings based on attribute
             isDisabled      : '=',
 
@@ -94,6 +97,9 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
                 helperItems         = [],
                 helperItemsLength   = 0,
                 checkBoxLayer       = '',
+                checkBoxContainer   = '',
+                isMore              = false,
+                pageIndex           = 0,
                 scrolled            = false,
                 selectedItems       = [],
                 formElements        = [],
@@ -593,6 +599,82 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
                 return $sce.trustAsHtml( label );
             }                                
 
+            $scope.getParams = function(){
+                var params = {};
+                params.q = $scope.inputLabel.labelFilter;
+                params.page = pageIndex;
+                return params;
+            };
+
+            var currentAjax = null;
+            var canceller = $q.defer();
+            var cancel = function(reason){
+                canceller.resolve(reason);
+            };
+            $scope.callAjax = function(isSearch){
+                if($scope.ajaxOptions){
+                    if(currentAjax){
+                        currentAjax.cancel();    
+                    }
+                    $scope.isLoading = true;
+
+                    var _request = {};
+                    _request.url = '';
+                    _request.method = 'GET';
+                    // _request.headers = {'Content-Type': 'JSON'}
+
+                    if($scope.ajaxOptions.url){
+                        _request.url = $scope.ajaxOptions.url;
+                    }
+
+                    if($scope.ajaxOptions.method){
+                        _request.method = $scope.ajaxOptions.method;
+                    }
+
+                    if($scope.ajaxOptions.headers){
+                        _request.headers = $scope.ajaxOptions.headers;
+                    }
+
+                    if($scope.ajaxOptions.method == 'GET'){
+                        if($scope.ajaxOptions.prepareRequest){
+                            _request.params = $scope.ajaxOptions.prepareRequest($scope.getParams());
+                        }else{
+                            _request.params = $scope.getParams();
+                        }
+                    }else{
+                        if($scope.ajaxOptions.prepareRequest){
+                            _request.data = $scope.ajaxOptions.prepareRequest($scope.getParams());
+                        }else{
+                            _request.data = $scope.getParams();
+                        }
+                    }
+
+                    var promise = $http(_request,{ timeout: canceller.promise}).
+                      success(function(data, status, headers, config) {
+                            var _data = data;
+                            if($scope.ajaxOptions.processResults){
+                                _data = $scope.ajaxOptions.processResults(data,$scope.getParams());
+                            }
+                            
+                            if(isSearch){
+                                $scope.inputModel = [];    
+                            }
+                            $scope.inputModel = $scope.inputModel.concat(_data.results);
+                            isMore = _data.isMore ? _data.isMore : isMore;
+
+                            pageIndex++;
+                            $scope.isLoading  = false;
+                      }).
+                      error(function(data, status, headers, config) {
+                            $scope.isLoading = false;
+                      });
+
+                    currentAjax = {
+                        promise: promise,
+                        cancel: cancel
+                    };
+                }
+            }
             // UI operations to show/hide checkboxes based on click event..
             $scope.toggleCheckboxes = function( e ) {                                    
                 
@@ -684,7 +766,7 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
                     $scope.onOpen();
                 }                            
             }
-            
+
             // handle clicks outside the button / multi select layer
             $scope.externalClickListener = function( e ) {                   
 
@@ -706,7 +788,9 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
                 }, 0 );
 
                 // set focus on button again
-                element.children().children()[ 0 ].focus();
+                // Comment by  @amit (amit.towork@gmail.com)
+                // to prevent focus on close widget when have multiple widget on
+                // element.children().children()[ 0 ].focus();
             }
    
             // select All / select None / reset buttons
@@ -917,7 +1001,7 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
 
             // get elements required for DOM operation
             checkBoxLayer = element.children().children().next()[0];
-
+            checkBoxContainer = element.children().children().children()[0];
             // set max-height property if provided
             if ( typeof attrs.maxHeight !== 'undefined' ) {                
                 var layer = element.children().children().children()[0];
@@ -1008,23 +1092,45 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
             
             // this is for touch enabled devices. We don't want to hide checkboxes on scroll. 
             var onTouchStart = function( e ) { 
-            	$scope.$apply( function() {
-            		$scope.scrolled = false;
-            	}); 
+                $scope.$apply( function() {
+                    $scope.scrolled = false;
+                }); 
             };
             angular.element( document ).bind( 'touchstart', onTouchStart);
             var onTouchMove = function( e ) { 
-            	$scope.$apply( function() {
-            		$scope.scrolled = true;                
-            	});
+                $scope.$apply( function() {
+                    $scope.scrolled = true;                
+                });
             };
             angular.element( document ).bind( 'touchmove', onTouchMove);            
 
             // unbind document events to prevent memory leaks
             $scope.$on( '$destroy', function () {
-			    angular.element( document ).unbind( 'touchstart', onTouchStart);
-            	angular.element( document ).unbind( 'touchmove', onTouchMove);
+                angular.element( document ).unbind( 'touchstart', onTouchStart);
+                angular.element( document ).unbind( 'touchmove', onTouchMove);
             });
+
+            if($scope.ajaxOptions){
+                angular.element( checkBoxContainer ).on( 'scroll', function(event){
+                        // console.log(event);
+                        // var containerHeight = checkBoxContainer.offsetHeight;
+                        // var scrollHeight = checkBoxContainer.scrollHeight;
+                        // var scrollTop = checkBoxContainer.scrollTop;
+                        // console.log(containerHeight,scrollHeight,scrollTop);
+                        if (event.srcElement.scrollTop > event.srcElement.scrollHeight - 200 ) {
+                           if(!$scope.isLoading){
+                                if(isMore){
+                                    $scope.callAjax();
+                                }
+                            }
+                        }
+                });
+
+                if($scope.ajaxOptions.loadOnInit){
+                    $scope.callAjax();
+                }
+            }
+             
         }
     }
 }]).run( [ '$templateCache' , function( $templateCache ) {
@@ -1104,8 +1210,9 @@ angular.module( 'isteven-multi-select', ['ng'] ).directive( 'istevenMultiSelect'
                     // the tick/check mark
                     '<span class="tickMark" ng-if="item[ groupProperty ] !== true && item[ tickProperty ] === true" ng-bind-html="icon.tickMark"></span>'+
                 '</div>'+
+                '<div class="" ng-show="isLoading">Loading...</div>'+
             '</div>'+
         '</div>'+
     '</span>';
-	$templateCache.put( 'isteven-multi-select.htm' , template );
+    $templateCache.put( 'isteven-multi-select.htm' , template );
 }]); 
